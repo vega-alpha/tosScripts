@@ -1,0 +1,35 @@
+plot Data = close;
+
+# Breadth Calculation
+# Define the advancing and declining stocks ratio or volume ratio
+def advDeclRatio = close("$ADV") / close("$DEC");
+def volumeRatio = close("$UVOL") / close("$DVOL");
+
+# Smoothing the breadth indicator using moving averages
+def advDeclSMA = Average(advDeclRatio, 10);
+def volumeSMA = Average(volumeRatio, 10);
+
+# Regime Indicator (using 50 and 200 period moving averages)
+def shortTermMA = Average(close, 50);
+def longTermMA = Average(close, 200);
+
+# Defines the market regime based on the relationship between moving averages
+def bullish = shortTermMA > longTermMA;
+def bearish = shortTermMA < longTermMA;
+def neutral = !bullish and !bearish;
+
+# Color coding based on market regime
+plot Regime = if bullish then 1 else if bearish then -1 else 0;
+Regime.AssignValueColor(if bullish then Color.GREEN else if bearish then Color.RED else Color.YELLOW);
+
+# Plot the breadth indicator (advancing/declining stocks or volume)
+plot Breadth = advDeclSMA;
+Breadth.AssignValueColor(if advDeclSMA > 1 then Color.GREEN else Color.RED);
+
+# labels
+AddLabel(yes, "Breadth: " + advDeclSMA, if advDeclSMA > 1 then Color.GREEN else Color.RED);
+AddLabel(yes, "Ticker Regime: " + (if bullish then "Bullish" else if bearish then "Bearish" else "Neutral"), 
+         if bullish then Color.GREEN else if bearish then Color.RED else Color.YELLOW);
+
+Breadth.Hide();
+Regime.Hide();
