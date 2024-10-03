@@ -1,0 +1,128 @@
+declare lower;
+
+input K_period        = 9;
+input D_period        = 9;
+input SlowTrendLength = 3;
+input smoothing_type  = { default EMA, SMA };
+input stochastic_type = { FAST, default SLOW };
+input over_bought     = 80;
+input over_sold       = 20;
+input show_bubbles    = yes;
+input show_sec_bbls   = no;
+input show_alerts     = no;
+
+def aggPer = getAggregationPeriod();
+def adjAggPer = if aggPer == AggregationPeriod.MIN then
+                          AggregationPeriod.THREE_MIN
+                        else if aggPer == AggregationPeriod.TWO_MIN then
+                          AggregationPeriod.FIVE_MIN
+                        else if aggPer == AggregationPeriod.THREE_MIN then
+                          AggregationPeriod.TEN_MIN
+                        else if aggPer == AggregationPeriod.FOUR_MIN then
+                          AggregationPeriod.TEN_MIN
+                        else if aggPer == AggregationPeriod.FIVE_MIN then
+                          AggregationPeriod.FIFTEEN_MIN
+                        else if aggPer == AggregationPeriod.TEN_MIN then
+                          AggregationPeriod.THIRTY_MIN
+                        else if aggPer == AggregationPeriod.FIFTEEN_MIN then
+                          AggregationPeriod.HOUR
+                        else if aggPer == AggregationPeriod.TWENTY_MIN then
+                          AggregationPeriod.HOUR
+                        else if aggPer == AggregationPeriod.THIRTY_MIN then
+                          AggregationPeriod.TWO_HOURS
+                        else if aggPer == AggregationPeriod.HOUR then
+                          AggregationPeriod.FOUR_HOURS
+                        else if aggPer == AggregationPeriod.TWO_HOURS then
+                          AggregationPeriod.DAY
+                        else if aggPer == AggregationPeriod.FOUR_HOURS then
+                          AggregationPeriod.DAY
+                        else if aggPer == AggregationPeriod.DAY then
+                          AggregationPeriod.THREE_DAYS
+                        else if aggPer == AggregationPeriod.TWO_DAYS then
+                          AggregationPeriod.WEEK
+                        else if aggPer == AggregationPeriod.THREE_DAYS then
+                          AggregationPeriod.WEEK
+                        else if aggPer == AggregationPeriod.FOUR_DAYS then
+                          AggregationPeriod.MONTH
+                        else if aggPer == AggregationPeriod.WEEK then
+                          AggregationPeriod.MONTH
+                        else if aggPer == AggregationPeriod.MONTH then
+                          AggregationPeriod.MONTH
+                        else
+                          Double.NaN;
+
+def _kPeriod;
+def _dPeriod;
+def _slowTrendLength;
+if aggPer == AggregationPeriod.MONTH then {
+  _kPeriod          = K_period * 3;
+  _dPeriod          = D_period * 3;
+  _slowTrendLength  = SlowTrendLength * 3;
+} else {
+  _kPeriod          = K_period;
+  _dPeriod          = D_period;
+  _slowTrendLength  = SlowTrendLength;
+}
+
+def priceH            = high( period = adjAggPer );
+def priceL            = low( period = adjAggPer );
+def priceC            = close( period = adjAggPer );
+
+def lowest_low        = lowest( low, _kPeriod );
+def highest_high      = highest( high, _kPeriod );
+def fastK             = if ( highest_high - lowest_low ) <= 0 then 0 else 100 * ( close - lowest_low ) / ( highest_high - lowest_low );
+def fastD             = if smoothing_type == smoothing_type.EMA then ExpAverage( fastK, _dPeriod ) else Average( fastK, _dPeriod );
+def slowK             = fastD;
+def slowD             = if smoothing_type == smoothing_type.EMA then ExpAverage( slowK, _dPeriod ) else Average( slowK, _dPeriod );
+
+#Stochastic
+plot stochD            = if stochastic_type == stochastic_type.FAST then fastD else slowD;
+stochD.SetPaintingStrategy( PaintingStrategy.POINTS );
+stochD.AssignValueColor( if stochD >= stochD[1] then Color.CYAN else if stochD < stochD[1] then Color.BLUE else Color.RED );
+
+#Reference lines
+plot OverBought       = over_bought;
+OverBought.SetDefaultColor( Color.BLACK );
+def Hundred           = 100;
+AddCloud( OverBought, Hundred, Color.BLUE, Color.BLUE );
+
+plot OverSold         = over_sold;
+OverSold.SetDefaultColor( Color.BLACK );
+def Zero              = 0;
+AddCloud( OverSold, Zero, Color.YELLOW, Color.YELLOW );
+
+#Calculate primary buy/sell
+def primaryBuy        = stochD >= OverSold   and stochD[1] < OverSold;
+def primarySell       = stochD <= OverBought and stochD[1] > OverBought;
+
+#Calculate secondary buy/sell
+def fastTrendUp       = stochD < stochD[-1];
+def slowTrendUp       = stochD > stochD[_slowTrendLength];
+def valley            =  fastTrendUp and !fastTrendUp[1] and stochD > OverSold;
+def peak              = !fastTrendUp and  fastTrendUp[1] and stochD < OverBought;
+def secondaryBuy      = valley and stochD < OverBought;
+def secondarySell     = peak   and stochD > OverSold;
+
+plot buy = if primaryBuy or secondaryBuy then stochD else Double.NaN;
+buy.DefineColor( "pBuy", Color.UPTICK );
+buy.DefineColor( "sBuy", CreateColor( 0, 255, 0 ) );
+buy.AssignValueColor( if primaryBuy then buy.color( "pBuy" ) else buy.color( "sBuy" ) );
+buy.SetPaintingStrategy( PaintingStrategy.ARROW_UP );
+buy.SetLineWeight( 3 );
+buy.setHiding( show_bubbles );
+
+plot sell = if primarySell or secondarySell then stochD else Double.NaN;
+sell.DefineColor( "pSell", Color.DOWNTICK );
+sell.DefineColor( "sSell", Color.MAGENTA );
+sell.AssignValueColor( if primarySell then sell.color( "pSell" ) else sell.color( "sSell" ) );
+sell.SetPaintingStrategy( PaintingStrategy.ARROW_DOWN );
+sell.SetLineWeight( 3 );
+sell.setHiding( show_bubbles );
+
+AssignPriceColor(
+if slowk > 80 then Color.yellow else color.current);
+AssignPriceColor(if slowK < 20
+ then Color.red else color.current);
+
+
+
